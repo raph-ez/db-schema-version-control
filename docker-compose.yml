@@ -1,0 +1,41 @@
+services:
+  db-development:
+    image: postgres:15-alpine
+    container_name: postgres-dev
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: dev_schema
+    ports:
+      - "5432:5432"
+    volumes:
+      - dev_data:/var/lib/postgresql/data
+
+  db-staging:
+    image: postgres:15-alpine
+    container_name: postgres-staging
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: staging_schema
+    ports:
+      - "5433:5432"
+    volumes:
+      - staging_data:/var/lib/postgresql/data
+
+  db-production:
+    image: postgres:15-alpine
+    container_name: postgres-prod
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: prod_schema
+    ports:
+      - "5434:5432"
+    volumes:
+      - prod_data:/var/lib/postgresql/data
+
+volumes:
+  dev_data:
+  staging_data:
+  prod_data:
