@@ -4,13 +4,8 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { useState, useRef, useEffect } from "react";
 
 export default function Home() {
-  // --- TEMPORARY BYPASS ---
-  const session = { user: { name: "Raphael" } };
-  const status: string = "authenticated";
-  // ------------------------
 
-  // @JOSH: Remove the bypass above and uncomment the line below once Azure AD keys are in .env.local
-  // const { data: session, status } = useSession();
+  const { data: session, status } = useSession();
 
   // Navigation State
   const [activeView, setActiveView] = useState<"connections" | "diff" | "overview">("connections");
