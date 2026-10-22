@@ -1,0 +1,37 @@
+!!! Use all these commands in the terminal !!!
+(These tables are stored locally on your device)
+
+/* Use these commands to create the tables*/
+
+Get-Content "sql/demo_students.sql" |
+    docker exec -i postgres-dev psql -U root -d dev_schema
+
+Get-Content "sql/demo_students.sql" |
+    docker exec -i postgres-staging psql -U root -d staging_schema
+
+
+==========================================================
+
+
+/* Use the command below to compare the tables*/
+$body = @{
+    development = "development"
+    staging = "staging"
+} | ConvertTo-Json
+
+$response = Invoke-RestMethod `
+    -Uri "http://localhost:3000/api/schemas/compare" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+
+$response | ConvertTo-Json -Depth 20
+
+
+==========================================================
+
+
+/* Use these commands to delete the created tables */
+docker exec -it postgres-dev psql -U root -d dev_schema -c "DROP TABLE IF EXISTS public.demo_students;"
+
+docker exec -it postgres-staging psql -U root -d staging_schema -c "DROP TABLE IF EXISTS public.demo_students;"
