@@ -1,4 +1,4 @@
-
+import { Pool } from "pg";
 import { createDatabasePool } from "@/lib/database";
 import { extractSchema } from "@/lib/schema-extractor";
 import {
@@ -8,8 +8,7 @@ import {
 
 type Environment = "development" | "staging" | "production";
 
-function isEnvironment(value: unknown): value is Environment
-{
+function isEnvironment(value: unknown): value is Environment {
     return (
         value === "development" ||
         value === "staging" ||
@@ -17,76 +16,84 @@ function isEnvironment(value: unknown): value is Environment
     );
 }
 
-export async function POST(request: Request)
-{
-    let developmentPool;
-    let stagingPool;
+// Helper to resolve either a URI string or environment name to a Pool instance
+function getPool(input: string) {
+    if (input.startsWith("postgres://") || input.startsWith("postgresql://")) {
+        return new Pool({
+            connectionString: input,
+            connectionTimeoutMillis: 5000,
+            ssl: false,
+        });
+    }
+    if (isEnvironment(input)) {
+        return createDatabasePool(input);
+    }
+    throw new Error(`Invalid connection target: ${input}`);
+}
 
-    try
-    {
+export async function POST(request: Request) {
+    let sourcePool: Pool | undefined;
+    let targetPool: Pool | undefined;
+
+    try {
         const body = await request.json();
 
-        if (
-            !isEnvironment(body.development) ||
-            !isEnvironment(body.staging)
-        )
-        {
+        // Extract connection targets from either sourceUri/targetUri OR development/staging
+        const sourceTarget = body.sourceUri || body.development;
+        const targetTarget = body.targetUri || body.staging;
+
+        if (!sourceTarget || !targetTarget) {
             return Response.json(
                 {
                     success: false,
-                    message:
-                        "Choose valid development and staging environments.",
+                    message: "Please provide valid database URIs or environments.",
                 },
                 { status: 400 }
             );
         }
 
-        developmentPool = createDatabasePool(body.development);
-        stagingPool = createDatabasePool(body.staging);
+        // Initialize connection pools
+        sourcePool = getPool(sourceTarget);
+        targetPool = getPool(targetTarget);
 
-        const developmentSchema: ExtractedSchema =
-            await extractSchema(developmentPool);
+        // Extract schemas live
+        const sourceSchema: ExtractedSchema = await extractSchema(sourcePool);
+        const targetSchema: ExtractedSchema = await extractSchema(targetPool);
 
-        const stagingSchema: ExtractedSchema =
-            await extractSchema(stagingPool);
-
-        const differences = compareSchemas(
-            developmentSchema,
-            stagingSchema
-        );
+        // Calculate differences
+        const differences = compareSchemas(sourceSchema, targetSchema);
 
         return Response.json({
             success: true,
             compared: {
-                development: body.development,
-                staging: body.staging,
+                source: sourceTarget,
+                target: targetTarget,
             },
             differenceCount: differences.length,
             differences,
+            // Format expected by frontend UI
+            semver: differences.length > 0 ? "v1.1.0" : "v1.0.0",
+            changes: differences,
+            sqlUp: `-- Migration Script\n-- Diffs detected: ${differences.length}`,
+            sqlDown: `-- Rollback Script`,
         });
-    }
-    catch (error)
-    {
+    } catch (error: any) {
         console.error("Schema comparison failed:", error);
 
         return Response.json(
             {
                 success: false,
                 message: "Could not compare the database schemas.",
+                details: error.message,
             },
             { status: 500 }
         );
-    }
-    finally
-    {
-        if (developmentPool)
-        {
-            await developmentPool.end();
+    } finally {
+        if (sourcePool) {
+            await sourcePool.end();
         }
-
-        if (stagingPool)
-        {
-            await stagingPool.end();
+        if (targetPool) {
+            await targetPool.end();
         }
     }
 }
