@@ -1,3 +1,4 @@
+
 import { Pool } from "pg";
 
 export type DatabaseEnvironment =
@@ -11,22 +12,47 @@ const databaseUrls: Record<DatabaseEnvironment, string | undefined> = {
     production: process.env.PRODUCTION_DATABASE_URL,
 };
 
+const pools: Record<string, Pool> = {};
+
 export function createDatabasePool(
     environment: DatabaseEnvironment
-): Pool
-{
+): Pool {
     const connectionString = databaseUrls[environment];
 
-    if (!connectionString)
-    {
+    if (!connectionString) {
         throw new Error(
             `Database connection is not configured for ${environment}.`
         );
     }
 
-    return new Pool({
+    if (!pools[connectionString]) {
+        pools[connectionString] = new Pool({
+            connectionString,
+            connectionTimeoutMillis: 5000,
+            max: 5,
+        });
+    }
+
+    return pools[connectionString];
+}
+
+export async function testConnection(
+    connectionString: string
+): Promise<boolean> {
+    const pool = new Pool({
         connectionString,
         connectionTimeoutMillis: 5000,
         max: 5,
     });
+
+    try {
+        const client = await pool.connect();
+        client.release();
+        return true;
+    } catch (error) {
+        console.error("Database connection error:", error);
+        return false;
+    } finally {
+        await pool.end();
+    }
 }
