@@ -1,0 +1,150 @@
+!!! USE ALL THESE COMMANDS IN THE TERMINAL!!!
+
+==========================================================
+1. CREATE THE SCHEMA_VERSION TABLES
+==========================================================
+
+Create the table in Development:
+
+Get-Content "sql/schema_version.sql" |
+    docker exec -i postgres-dev psql -U root -d dev_schema
+
+
+Create the table in Staging:
+
+Get-Content "sql/schema_version.sql" |
+    docker exec -i postgres-staging psql -U root -d staging_schema
+
+
+NOTE:
+Only execute these commands when initializing the version tables.
+Running the SQL file again will insert another version record.
+
+
+==========================================================
+2. DETECT AND COMPARE SCHEMA VERSIONS
+==========================================================
+
+Use this command to compare Development and Staging:
+
+$response = Invoke-RestMethod `
+    -Uri "http://localhost:3000/api/schemas/version" `
+    -Method Post
+
+$response | ConvertTo-Json -Depth 20
+
+
+The API automatically connects to both databases using the
+connection strings configured in .env.local.
+
+
+==========================================================
+3. UPDATE THE DEVELOPMENT VERSION
+==========================================================
+
+Example: Update Development to version 1.1.0.
+
+docker exec -it postgres-dev psql -U root -d dev_schema -c "UPDATE schema_version SET version = '1.1.0' WHERE id = (SELECT MAX(id) FROM schema_version);"
+
+
+==========================================================
+4. UPDATE THE STAGING VERSION
+==========================================================
+
+Example: Update Staging to version 1.0.0.
+
+docker exec -it postgres-staging psql -U root -d staging_schema -c "UPDATE schema_version SET version = '1.0.0' WHERE id = (SELECT MAX(id) FROM schema_version);"
+
+
+==========================================================
+5. CHECK THE CURRENT VERSIONS
+==========================================================
+
+Check Development:
+
+docker exec -it postgres-dev psql -U root -d dev_schema -c "SELECT * FROM schema_version ORDER BY id DESC;"
+
+
+Check Staging:
+
+docker exec -it postgres-staging psql -U root -d staging_schema -c "SELECT * FROM schema_version ORDER BY id DESC;"
+
+
+==========================================================
+6. TEST STRUCTURAL COMPARISON
+==========================================================
+
+If the schema_version table is missing from one environment,
+the API should automatically perform structural comparison.
+
+Temporarily delete the Staging version table:
+
+docker exec -it postgres-staging psql -U root -d staging_schema -c "DROP TABLE IF EXISTS public.schema_version;"
+
+
+Run the version detection API again:
+
+$response = Invoke-RestMethod `
+    -Uri "http://localhost:3000/api/schemas/version" `
+    -Method Post
+
+$response | ConvertTo-Json -Depth 20
+
+
+EXPECTED RESULT:
+
+status: structural_comparison_required
+performed: true
+
+The response should also contain the structural differences
+between Development and Staging.
+
+
+==========================================================
+7. RESTORE THE STAGING VERSION TABLE
+==========================================================
+
+After testing, recreate the Staging version table:
+
+Get-Content "sql/schema_version.sql" |
+    docker exec -i postgres-staging psql -U root -d staging_schema
+
+
+Check both environments again:
+
+Development:
+
+docker exec -it postgres-dev psql -U root -d dev_schema -c "SELECT * FROM schema_version ORDER BY id DESC;"
+
+
+Staging:
+
+docker exec -it postgres-staging psql -U root -d staging_schema -c "SELECT * FROM schema_version ORDER BY id DESC;"
+
+
+EXPECTED INITIAL RESULT:
+
+Development: 1.0.0
+Staging:     1.0.0
+
+
+==========================================================
+IMPORTANT NOTES
+==========================================================
+
+1. Both Development and Staging must have a schema_version
+   table for normal version detection.
+
+2. Version numbers must follow MAJOR.MINOR.PATCH format.
+   Example: 1.0.0, 1.1.0, 2.0.0.
+
+3. Version numbers are currently updated manually.
+
+4. If version information is missing, the system performs
+   structural comparison instead.
+
+5. Only delete the schema_version table when testing the
+   structural comparison feature.
+
+6. Make sure to restore the version table after testing.
+==========================================================

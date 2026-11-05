@@ -1,9 +1,10 @@
-
+// Stores the name of each table extracted from the database.
 interface Table
 {
     table_name: string;
 }
 
+// Stores the properties of each column in a table.
 interface Column
 {
     table_name: string;
@@ -20,6 +21,7 @@ interface Column
     identity_generation: string | null;
 }
 
+// Stores constraint information, including primary keys and foreign keys.
 interface Constraint
 {
     table_name: string;
@@ -34,6 +36,7 @@ interface Constraint
     referenced_columns: string[];
 }
 
+// Stores index information extracted from the database.
 interface Index
 {
     schema_name: string;
@@ -43,6 +46,7 @@ interface Index
     is_constraint_index: boolean;
 }
 
+// Defines the complete database schema information used for comparison.
 export interface ExtractedSchema
 {
     tables: Table[];
@@ -51,6 +55,7 @@ export interface ExtractedSchema
     indexes: Index[];
 }
 
+// Defines the information returned when a difference is detected.
 export interface SchemaDifference
 {
     type: string;
@@ -61,13 +66,16 @@ export interface SchemaDifference
     staging?: unknown;
 }
 
+// Compares the database schemas from Development and Staging.
 export function compareSchemas(
     development: ExtractedSchema,
     staging: ExtractedSchema
 ): SchemaDifference[]
 {
+    // Stores all differences found between the two environments.
     const differences: SchemaDifference[] = [];
 
+    // Reusable function for comparing columns, constraints and indexes.
     function compareObjects<T>(
         developmentObjects: T[],
         stagingObjects: T[],
@@ -78,18 +86,22 @@ export function compareSchemas(
         compareFields: (keyof T)[]
     )
     {
+        // Convert Development objects into a Map for faster lookup.
         const developmentMap = new Map(
             developmentObjects.map((item) => [getKey(item), item])
         );
 
+        // Convert Staging objects into a Map for faster lookup.
         const stagingMap = new Map(
             stagingObjects.map((item) => [getKey(item), item])
         );
 
+        // Check whether each Development object exists in Staging.
         for (const [key, developmentItem] of developmentMap)
         {
             const stagingItem = stagingMap.get(key);
 
+            // Report an object that exists in Development but not Staging.
             if (!stagingItem)
             {
                 differences.push({
@@ -106,11 +118,13 @@ export function compareSchemas(
                 continue;
             }
 
+            // Compare the selected properties when the object exists in both environments.
             for (const field of compareFields)
             {
                 const developmentValue = developmentItem[field];
                 const stagingValue = stagingItem[field];
 
+                // Detect changes by comparing the values from both environments.
                 if (
                     JSON.stringify(developmentValue) !==
                     JSON.stringify(stagingValue)
@@ -131,6 +145,7 @@ export function compareSchemas(
             }
         }
 
+        // Check whether Staging contains objects missing from Development.
         for (const [key, stagingItem] of stagingMap)
         {
             if (!developmentMap.has(key))
@@ -149,7 +164,7 @@ export function compareSchemas(
         }
     }
 
-    // Compare tables.
+    // Compare tables by collecting their names into Sets.
     const developmentTables = new Set(
         development.tables.map((table) => table.table_name)
     );
@@ -158,6 +173,7 @@ export function compareSchemas(
         staging.tables.map((table) => table.table_name)
     );
 
+    // Find tables that exist in Development but not Staging.
     for (const table of developmentTables)
     {
         if (!stagingTables.has(table))
@@ -172,6 +188,7 @@ export function compareSchemas(
         }
     }
 
+    // Find tables that exist in Staging but not Development.
     for (const table of stagingTables)
     {
         if (!developmentTables.has(table))
@@ -186,7 +203,7 @@ export function compareSchemas(
         }
     }
 
-    // Compare columns.
+    // Compare columns using their table and column names as unique identifiers.
     compareObjects(
         development.columns,
         staging.columns,
@@ -208,7 +225,7 @@ export function compareSchemas(
         ]
     );
 
-    // Compare constraints and their properties.
+    // Compare constraints using their table and constraint names.
     compareObjects(
         development.constraints,
         staging.constraints,
@@ -229,9 +246,8 @@ export function compareSchemas(
         ]
     );
 
-    // Compare standalone indexes only.
-    // Indexes backing primary-key, unique, or exclusion constraints
-    // are represented through their associated constraints instead.
+    // Exclude indexes that are already represented by their associated constraints.
+    // This prevents primary-key, unique and exclusion indexes from being counted twice.
     const developmentStandaloneIndexes = development.indexes.filter(
         (index) => !index.is_constraint_index
     );
@@ -240,6 +256,7 @@ export function compareSchemas(
         (index) => !index.is_constraint_index
     );
 
+    // Compare standalone indexes using their schema, table and index names.
     compareObjects(
         developmentStandaloneIndexes,
         stagingStandaloneIndexes,
@@ -253,5 +270,6 @@ export function compareSchemas(
         ]
     );
 
+    // Return the complete list of detected schema differences.
     return differences;
 }
