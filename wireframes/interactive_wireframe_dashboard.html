@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Control Center Wireframe Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono-code {
+      font-family: 'Fira Code', monospace;
+    }
+    
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Wireframe Overlay Styles */
+    .wireframe-mode {
+      background-size: 20px 20px;
+      background-image: radial-gradient(circle, #334155 1px, transparent 1px);
+    }
+    
+    .annotation-badge {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Top Global Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+    <div class="flex items-center space-x-4">
+      <div class="bg-indigo-600/20 text-indigo-400 p-2 rounded-lg border border-indigo-500/30">
+        <i class="fa-solid fa-database text-xl"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <h1 class="font-bold text-slate-100 tracking-tight">DB Engine Control Center</h1>
+          <span class="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-mono-code">v1.2.0-beta</span>
+        </div>
+        <p class="text-xs text-slate-400">Schema Versioning & Performance Control Dashboard</p>
+      </div>
+    </div>
+
+    <!-- Controls & Toggle Bar -->
+    <div class="flex items-center space-x-3 text-xs">
+      <!-- Annotation Toggle Button -->
+      <button id="toggleAnnotationsBtn" onclick="toggleAnnotations()" class="px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition flex items-center space-x-2">
+        <i class="fa-solid fa-tags"></i>
+        <span>Blueprint Notes: <strong id="annotationStateText">ON</strong></span>
+      </button>
+
+      <!-- Wireframe Mode Grid Toggle -->
+      <button id="toggleGridBtn" onclick="toggleGridMode()" class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 transition flex items-center space-x-2">
+        <i class="fa-solid fa-border-top-left"></i>
+        <span>Grid View</span>
+      </button>
+
+      <!-- Connection Status Indicator -->
+      <div class="flex items-center space-x-2 bg-slate-800/80 border border-slate-700/80 px-3 py-1.5 rounded-lg">
+        <span class="relative flex h-2 w-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        <span class="text-slate-300 font-medium">Staging connected</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App Shell -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- Left Navigation Sidebar -->
+    <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
+      <div class="p-4 space-y-6">
+        
+        <div>
+          <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-3">Navigation</div>
+          <nav class="space-y-1" id="navContainer">
+            <button onclick="switchTab('connections')" id="nav-connections" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800 transition">
+              <i class="fa-solid fa-network-wired text-slate-400 w-4"></i>
+              <span>Connections & Staging</span>
+            </button>
+            
+            <button onclick="switchTab('compare')" id="nav-compare" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-indigo-400 bg-indigo-600/10 border border-indigo-500/20 transition">
+              <i class="fa-solid fa-code-compare text-indigo-400 w-4"></i>
+              <span>Schema Comparison & Diff</span>
+            </button>
+            
+            <button onclick="switchTab('query')" id="nav-query" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800 transition">
+              <i class="fa-solid fa-terminal text-slate-400 w-4"></i>
+              <span>Query Execution Studio</span>
+            </button>
+            
+            <button onclick="switchTab('metrics')" id="nav-metrics" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800 transition">
+              <i class="fa-solid fa-chart-line text-slate-400 w-4"></i>
+              <span>Health & Metrics</span>
+            </button>
+          </nav>
+        </div>
+
+        <div>
+          <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-3">Target Environments</div>
+          <div class="space-y-2 px-1">
+            <div class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-xs">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-medium text-slate-300">Staging (Dev)</span>
+                <span class="text-[10px] text-emerald-400 font-mono-code">5432</span>
+              </div>
+              <p class="text-[11px] text-slate-500 font-mono-code truncate">dev_schema_v1.1</p>
+            </div>
+            
+            <div class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-xs">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-medium text-slate-300">Production (Live)</span>
+                <span class="text-[10px] text-amber-400 font-mono-code">5433</span>
+              </div>
+              <p class="text-[11px] text-slate-500 font-mono-code truncate">prod_schema_v1.0</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer User/Version Card -->
+      <div class="p-4 border-t border-slate-800 bg-slate-900/50">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-[10px] font-bold">
+              SE
+            </div>
+            <span class="text-slate-300 text-xs font-medium">Swinburne Engine</span>
+          </div>
+          <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content Workspace -->
+    <main id="mainWorkspace" class="flex-1 overflow-y-auto bg-slate-950 p-8 wireframe-mode transition-all duration-200">
+
+      <!-- ========================================================================= -->
+      <!-- TAB 1: CONNECTIONS & STAGING -->
+      <!-- ========================================================================= -->
+      <section id="tab-connections" class="tab-content hidden space-y-6 max-w-6xl mx-auto">
+        <div class="flex justify-between items-start">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-100 tracking-tight">Database Connections & Environment Manager</h2>
+            <p class="text-slate-400 text-sm mt-1">Configure database connections and verify driver status.</p>
+          </div>
+          
+          <div class="annotation-box hidden bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
+            <div class="font-semibold text-amber-300 mb-1 flex items-center space-x-1">
+              <i class="fa-solid fa-lightbulb"></i>
+              <span>Blueprint Note: Module 1</span>
+            </div>
+            Validates PostgreSQL URI schemas and initial connection pools (`lib/database.ts`).
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Source DB Card -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+              <div class="flex items-center space-x-2">
+                <span class="w-3 h-3 rounded-full bg-indigo-500"></span>
+                <h3 class="font-semibold text-slate-200">Source / Staging Database</h3>
+              </div>
+              <span class="text-xs bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded font-mono-code">Read/Write</span>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Connection String (URI)</label>
+                <input type="text" value="postgresql://postgres:postgres@localhost:5432/staging_db" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono-code text-slate-200 focus:outline-none focus:border-indigo-500">
+              </div>
+
+              <div class="flex space-x-3">
+                <button onclick="testConnectionAlert('Staging')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition">
+                  Test Connection
+                </button>
+                <button class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs font-medium transition">
+                  Refresh Schema
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Target DB Card -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+              <div class="flex items-center space-x-2">
+                <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+                <h3 class="font-semibold text-slate-200">Target / Production Database</h3>
+              </div>
+              <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-mono-code">Production</span>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Connection String (URI)</label>
+                <input type="text" value="postgresql://postgres:postgres@localhost:5433/prod_db" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono-code text-slate-200 focus:outline-none focus:border-indigo-500">
+              </div>
+
+              <div class="flex space-x-3">
+                <button onclick="testConnectionAlert('Production')" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition">
+                  Test Connection
+                </button>
+                <button class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-xs font-medium transition">
+                  Refresh Schema
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================================= -->
+      <!-- TAB 2: SCHEMA COMPARISON & DIFF (DEFAULT ACTIVE) -->
+      <!-- ========================================================================= -->
+      <section id="tab-compare" class="tab-content space-y-6 max-w-6xl mx-auto">
+        <div class="flex justify-between items-start">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-100 tracking-tight">Schema Comparison & Versioning Engine</h2>
+            <p class="text-slate-400 text-sm mt-1">Detect structural diffs between staging and production schemas with SemVer calculation.</p>
+          </div>
+
+          <div class="annotation-box hidden bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
+            <div class="font-semibold text-amber-300 mb-1 flex items-center space-x-1">
+              <i class="fa-solid fa-lightbulb"></i>
+              <span>Blueprint Note: Module 2</span>
+            </div>
+            Uses `lib/schema-comparator.ts` & `lib/sql-generator.ts`. Generates migrations and rollbacks automatically.
+          </div>
+        </div>
+
+        <!-- Action Header -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex items-center space-x-4">
+            <button onclick="runSchemaComparison()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg font-medium text-xs flex items-center space-x-2 transition shadow-lg shadow-indigo-600/20">
+              <i class="fa-solid fa-play"></i>
+              <span>Run Schema Comparison</span>
+            </button>
+
+            <div class="text-xs text-slate-400 border-l border-slate-800 pl-4">
+              Version Impact: <span class="text-indigo-400 font-bold font-mono-code">v1.1.0 (Minor Bump)</span>
+            </div>
+          </div>
+
+          <button onclick="copyToClipboard('sql-preview-box')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1.5">
+            <i class="fa-regular fa-copy"></i>
+            <span>Copy Migration SQL</span>
+          </button>
+        </div>
+
+        <!-- Diff Split View -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          <!-- Column Differences Panel -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <h3 class="font-semibold text-slate-200 text-sm flex items-center justify-between">
+              <span>Detected Schema Differences</span>
+              <span class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">2 Changes Found</span>
+            </h3>
+
+            <div class="space-y-3 text-xs">
+              <!-- Add Column Item -->
+              <div class="p-3 bg-emerald-950/30 border border-emerald-800/50 rounded-lg space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-emerald-400 font-semibold font-mono-code">+ ADD COLUMN</span>
+                  <span class="text-[10px] text-slate-400">Table: students</span>
+                </div>
+                <p class="text-slate-300 font-mono-code">email VARCHAR(255) NOT NULL</p>
+                <p class="text-[10px] text-slate-500">Non-breaking addition → Triggers Minor Version bump (+0.1.0)</p>
+              </div>
+
+              <!-- Modify Column Item -->
+              <div class="p-3 bg-indigo-950/30 border border-indigo-800/50 rounded-lg space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-indigo-400 font-semibold font-mono-code">~ ALTER COLUMN</span>
+                  <span class="text-[10px] text-slate-400">Table: courses</span>
+                </div>
+                <p class="text-slate-300 font-mono-code">code VARCHAR(10) → VARCHAR(20)</p>
+                <p class="text-[10px] text-slate-500">Safe length expansion → Patch update</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Generated Migration SQL Code Preview -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3 flex flex-col">
+            <div class="flex justify-between items-center">
+              <h3 class="font-semibold text-slate-200 text-sm">Generated Migration & Rollback SQL</h3>
+              <span class="text-[10px] text-slate-500 font-mono-code">PostgreSQL Dialect</span>
+            </div>
+
+            <pre id="sql-preview-box" class="flex-1 bg-slate-950 p-4 rounded-lg text-xs font-mono-code text-emerald-400 overflow-x-auto border border-slate-800 space-y-2"><code>-- ================================================
+-- Forward Migration Script (v1.0.0 -> v1.1.0)
+-- ================================================
+
+ALTER TABLE students 
+  ADD COLUMN email VARCHAR(255) NOT NULL DEFAULT '';
+
+ALTER TABLE courses 
+  ALTER COLUMN code TYPE VARCHAR(20);
+
+-- ================================================
+-- Automated Rollback Script
+-- ================================================
+
+-- ALTER TABLE students DROP COLUMN email;
+-- ALTER TABLE courses ALTER COLUMN code TYPE VARCHAR(10);</code></pre>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ========================================================================= -->
+      <!-- TAB 3: QUERY EXECUTION STUDIO -->
+      <!-- ========================================================================= -->
+      <section id="tab-query" class="tab-content hidden space-y-6 max-w-6xl mx-auto">
+        <div class="flex justify-between items-start">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-100 tracking-tight">Query Execution Studio & Anti-Pattern Detector</h2>
+            <p class="text-slate-400 text-sm mt-1">Analyze SQL execution plans (`EXPLAIN FORMAT JSON`) and flag performance anti-patterns.</p>
+          </div>
+
+          <div class="annotation-box hidden bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
+            <div class="font-semibold text-amber-300 mb-1 flex items-center space-x-1">
+              <i class="fa-solid fa-lightbulb"></i>
+              <span>Blueprint Note: Module 3</span>
+            </div>
+            Uses `lib/query-analyzer.ts` and `app/api/query/analyze/route.ts` with offline fallback mode.
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <!-- Left Query Editor -->
+          <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-semibold text-slate-300">SQL Input Editor</label>
+              <span class="text-[10px] text-slate-500 font-mono-code">PostgreSQL SELECT Engine</span>
+            </div>
+
+            <textarea id="sqlQueryInput" rows="6" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono-code text-slate-200 focus:outline-none focus:border-indigo-500" placeholder="Enter SQL SELECT query...">SELECT * FROM students WHERE name LIKE '%John%' ORDER BY created_at DESC;</textarea>
+
+            <div class="flex justify-between items-center">
+              <button onclick="runQueryAnalysis()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-xs font-medium transition flex items-center space-x-2">
+                <i class="fa-solid fa-microchip"></i>
+                <span>Analyze Execution Plan</span>
+              </button>
+
+              <button onclick="loadSampleQuery()" class="text-xs text-indigo-400 hover:underline">
+                Load Sample Anti-Pattern Query
+              </button>
+            </div>
+          </div>
+
+          <!-- Right Anti-Pattern Warnings -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <h3 class="font-semibold text-slate-200 text-sm">Anti-Pattern Diagnostics</h3>
+
+            <div id="antiPatternContainer" class="space-y-3">
+              <div class="bg-amber-950/40 border border-amber-800/60 p-3 rounded-lg text-xs space-y-1">
+                <div class="flex items-center space-x-2 text-amber-400 font-semibold">
+                  <i class="fa-solid fa-triangle-exclamation"></i>
+                  <span>Wildcard SELECT Detected</span>
+                </div>
+                <p class="text-amber-200/80 text-[11px]">`SELECT *` retrieves all columns, increasing memory overhead and network payload. Explicitly declare target columns.</p>
+              </div>
+
+              <div class="bg-indigo-950/40 border border-indigo-800/60 p-3 rounded-lg text-xs space-y-1">
+                <div class="flex items-center space-x-2 text-indigo-400 font-semibold">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <span>Unindexed Substring Pattern</span>
+                </div>
+                <p class="text-indigo-200/80 text-[11px]">Leading wildcard in `LIKE '%John%'` prevents index usage, causing full sequential table scans.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- EXPLAIN Plan Output Panel -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <div class="flex justify-between items-center">
+            <h3 class="font-semibold text-slate-200 text-sm">PostgreSQL EXPLAIN Execution Plan Node</h3>
+            <span class="text-xs text-emerald-400 font-mono-code">Cost: 0.00..18.50 | Startup: 0.11ms</span>
+          </div>
+
+          <pre id="explainOutput" class="bg-slate-950 p-4 rounded-lg text-xs font-mono-code text-sky-400 overflow-x-auto border border-slate-800">[
+  {
+    "Plan": {
+      "Node Type": "Seq Scan",
+      "Relation Name": "students",
+      "Alias": "students",
+      "Startup Cost": 0.00,
+      "Total Cost": 18.50,
+      "Plan Rows": 12,
+      "Plan Width": 244,
+      "Filter": "(name ~~ '%John%'::text)",
+      "Output": ["id", "name", "email", "created_at"]
+    },
+    "Planning Time": 0.112,
+    "Execution Time": 0.425
+  }
+]</pre>
+        </div>
+      </section>
+
+      <!-- ========================================================================= -->
+      <!-- TAB 4: HEALTH & METRICS -->
+      <!-- ========================================================================= -->
+      <section id="tab-metrics" class="tab-content hidden space-y-6 max-w-6xl mx-auto">
+        <div class="flex justify-between items-start">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-100 tracking-tight">Database Health & Performance Monitoring</h2>
+            <p class="text-slate-400 text-sm mt-1">Real-time system catalog diagnostics (`pg_stat_user_tables`, `pg_stat_activity`).</p>
+          </div>
+
+          <div class="annotation-box hidden bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
+            <div class="font-semibold text-amber-300 mb-1 flex items-center space-x-1">
+              <i class="fa-solid fa-lightbulb"></i>
+              <span>Blueprint Note: Module 4</span>
+            </div>
+            Queries PostgreSQL catalog views in `app/api/metrics/route.ts` to identify bloat and unused indexes.
+          </div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+              <span>Dead Tuples</span>
+              <i class="fa-solid fa-ghost text-amber-400"></i>
+            </div>
+            <div class="text-2xl font-bold text-slate-100 font-mono-code">1,240</div>
+            <div class="text-[10px] text-amber-400">VACUUM Recommended</div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+              <span>Unused Indexes</span>
+              <i class="fa-solid fa-box-archive text-indigo-400"></i>
+            </div>
+            <div class="text-2xl font-bold text-slate-100 font-mono-code">3</div>
+            <div class="text-[10px] text-slate-400">Reclaim 14 MB memory</div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+              <span>Active Queries</span>
+              <i class="fa-solid fa-bolt text-emerald-400"></i>
+            </div>
+            <div class="text-2xl font-bold text-slate-100 font-mono-code">8</div>
+            <div class="text-[10px] text-emerald-400">Normal Throughput</div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+              <span>Longest Query</span>
+              <i class="fa-solid fa-clock text-sky-400"></i>
+            </div>
+            <div class="text-2xl font-bold text-slate-100 font-mono-code">0.42s</div>
+            <div class="text-[10px] text-slate-400">Threshold: 2.00s</div>
+          </div>
+
+        </div>
+
+        <!-- Details Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          <!-- Table Health & Bloat Status -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <h3 class="font-semibold text-slate-200 text-sm">Table Health & Tuple Bloat Statistics</h3>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th class="pb-2">Table Name</th>
+                    <th class="pb-2">Live Tuples</th>
+                    <th class="pb-2">Dead Tuples</th>
+                    <th class="pb-2">Health</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/50 text-slate-300 font-mono-code">
+                  <tr>
+                    <td class="py-2.5">students</td>
+                    <td>14,250</td>
+                    <td class="text-amber-400">1,120</td>
+                    <td><span class="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded">92%</span></td>
+                  </tr>
+                  <tr>
+                    <td class="py-2.5">courses</td>
+                    <td>850</td>
+                    <td class="text-emerald-400">12</td>
+                    <td><span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded">99%</span></td>
+                  </tr>
+                  <tr>
+                    <td class="py-2.5">enrollments</td>
+                    <td>42,100</td>
+                    <td class="text-slate-400">108</td>
+                    <td><span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded">98%</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Unused Index List -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <h3 class="font-semibold text-slate-200 text-sm">Unused Index Candidates</h3>
+
+            <div class="space-y-3 text-xs">
+              <div class="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
+                <div>
+                  <p class="font-mono-code text-indigo-400 font-semibold">idx_students_phone</p>
+                  <p class="text-[11px] text-slate-400">Table: students | Scans: 0</p>
+                </div>
+                <button onclick="alert('Drop index command copied: DROP INDEX idx_students_phone;')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                  Drop SQL
+                </button>
+              </div>
+
+              <div class="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
+                <div>
+                  <p class="font-mono-code text-indigo-400 font-semibold">idx_courses_deprecated_code</p>
+                  <p class="text-[11px] text-slate-400">Table: courses | Scans: 0</p>
+                </div>
+                <button onclick="alert('Drop index command copied: DROP INDEX idx_courses_deprecated_code;')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                  Drop SQL
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Interactive JavaScript Controller -->
+  <script>
+    // State management
+    let annotationsEnabled = false;
+    let gridViewEnabled = true;
+
+    // Tab Navigation Logic
+    function switchTab(tabId) {
+      // Hide all contents
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      
+      // Reset button styles
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.className = 'nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800 transition';
+      });
+
+      // Show selected tab
+      const targetTab = document.getElementById(`tab-${tabId}`);
+      if (targetTab) {
+        targetTab.classList.remove('hidden');
+      }
+
+      // Highlight active nav button
+      const activeBtn = document.getElementById(`nav-${tabId}`);
+      if (activeBtn) {
+        activeBtn.className = 'nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-indigo-400 bg-indigo-600/10 border border-indigo-500/20 transition';
+      }
+    }
+
+    // Toggle Blueprint Annotations
+    function toggleAnnotations() {
+      annotationsEnabled = !annotationsEnabled;
+      document.getElementById('annotationStateText').innerText = annotationsEnabled ? 'ON' : 'OFF';
+      
+      const boxes = document.querySelectorAll('.annotation-box');
+      boxes.forEach(box => {
+        if (annotationsEnabled) {
+          box.classList.remove('hidden');
+        } else {
+          box.classList.add('hidden');
+        }
+      });
+    }
+
+    // Toggle Grid View
+    function toggleGridMode() {
+      gridViewEnabled = !gridViewEnabled;
+      const workspace = document.getElementById('mainWorkspace');
+      if (gridViewEnabled) {
+        workspace.classList.add('wireframe-mode');
+      } else {
+        workspace.classList.remove('wireframe-mode');
+      }
+    }
+
+    // Interactive Helper Actions
+    function testConnectionAlert(envName) {
+      alert(`[DB Engine System] Connection check successful for ${envName} environment on localhost pool.`);
+    }
+
+    function runSchemaComparison() {
+      alert('[Schema Engine] Comparison completed! 2 column differences detected between staging_db and prod_db.');
+    }
+
+    function runQueryAnalysis() {
+      alert('[Query Analyzer] Execution plan calculated using EXPLAIN FORMAT JSON. 2 anti-pattern warnings generated.');
+    }
+
+    function loadSampleQuery() {
+      document.getElementById('sqlQueryInput').value = "SELECT * FROM students WHERE UPPER(name) LIKE '%JOHN%' ORDER BY created_at DESC;";
+    }
+
+    function copyToClipboard(elementId) {
+      const text = document.getElementById(elementId).innerText;
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      alert('SQL Migration Script copied to clipboard!');
+    }
+  </script>
+</body>
+</html>
