@@ -1,6 +1,7 @@
 services:
   db-development:
     image: postgres:15-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
     container_name: postgres-dev
     environment:
       POSTGRES_USER: root
@@ -13,6 +14,7 @@ services:
 
   db-staging:
     image: postgres:15-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
     container_name: postgres-staging
     environment:
       POSTGRES_USER: root
@@ -25,6 +27,7 @@ services:
 
   db-production:
     image: postgres:15-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
     container_name: postgres-prod
     environment:
       POSTGRES_USER: root

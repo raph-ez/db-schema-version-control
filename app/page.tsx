@@ -15,19 +15,12 @@ type QueryResult = {
   explainPlan: unknown;
 };
 
-type MetricsTable = {
-  name: string;
-  live: string | number;
-  dead: string | number;
-  health: string;
-};
-
 type MetricsData = {
-  deadTuples: string | number;
-  unusedIndexes: string | number;
-  activeQueries: string | number;
-  longestQuery: string | number;
-  tables: MetricsTable[];
+  tableHealth: { table_name: string; n_live_tup: number; n_dead_tup: number }[];
+  unusedIndexes: { table_name: string; index_name: string }[];
+  longRunningQueries: { query: string; duration: string; state: string }[];
+  sequentialScans: { table_name: string; seq_scan: number; seq_tup_read: number; n_live_tup: number }[];
+  historicalQueries: { query: string; execution_count: string; average_time_ms: string; total_rows_returned: string }[];
 };
 
 export default function Home() {
@@ -35,14 +28,14 @@ export default function Home() {
   const [annotationsOn, setAnnotationsOn] = useState(true);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Connection State (FR2: Development, Staging, Production)
+  // Connection State
   const [devUri, setDevUri] = useState("postgresql://root:password@127.0.0.1:5432/postgres");
-  const [stagingUri, setStagingUri] = useState("postgresql://root:password@127.0.0.1:5432/staging_schema");
-  const [prodUri, setProdUri] = useState("postgresql://root:password@127.0.0.1:5433/prod_schema");
+  const [stagingUri, setStagingUri] = useState("postgresql://root:password@127.0.0.1:5433/postgres");
+  const [prodUri, setProdUri] = useState("postgresql://root:password@127.0.0.1:5434/postgres");
   const [connStatus, setConnStatus] = useState<string | null>(null);
 
-  // Cross-Environment Schema Selection State (FR3)
-  const [sourceEnv, setSourceEnv] = useState<"dev" | "staging" | "prod">("staging");
+  // Cross-Environment Schema Selection State
+  const [sourceEnv, setSourceEnv] = useState<"dev" | "staging" | "prod">("dev");
   const [targetEnv, setTargetEnv] = useState<"dev" | "staging" | "prod">("prod");
   const [sourceSchema, setSourceSchema] = useState("public");
   const [targetSchema, setTargetSchema] = useState("public");
@@ -65,8 +58,8 @@ export default function Home() {
           "Total Cost": 18.50,
           "Plan Rows": 12,
           "Plan Width": 244,
-          Filter: "(name ~~ '%John%'::text)",
-          Output: ["id", "name", "email", "created_at"]
+          "Filter": "(name ~~ '%John%'::text)",
+          "Output": ["id", "name", "email", "created_at"]
         },
         "Planning Time": 0.112,
         "Execution Time": 0.425
@@ -74,40 +67,33 @@ export default function Home() {
     ]
   });
 
-  // Health Metrics State
+  // Metrics State
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metrics, setMetrics] = useState<MetricsData>({
-    deadTuples: "1,240",
-    unusedIndexes: "3",
-    activeQueries: "8",
-    longestQuery: "0.42s",
-    tables: [
-      { name: "students", live: "14,250", dead: "1,120", health: "92%" },
-      { name: "courses", live: "850", dead: "12", health: "99%" },
-      { name: "enrollments", live: "42,100", dead: "108", health: "98%" }
-    ]
+    tableHealth: [],
+    unusedIndexes: [],
+    longRunningQueries: [],
+    sequentialScans: [],
+    historicalQueries: []
   });
+  const [hasFetched, setHasFetched] = useState(false);
 
-  // Helper notification toast
   const notify = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // Helper copy to clipboard
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     notify(`Copied ${label} to clipboard!`);
   };
 
-  // Resolve URI based on environment key
   const getUriForEnv = (env: "dev" | "staging" | "prod") => {
     if (env === "dev") return devUri;
     if (env === "staging") return stagingUri;
     return prodUri;
   };
 
-  // Button Action Handlers
   const handleTestConnection = async (env: string) => {
     let uri = stagingUri;
     if (env === "Development") uri = devUri;
@@ -180,17 +166,18 @@ export default function Home() {
       const res = await fetch("/api/metrics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString: stagingUri }),
+        body: JSON.stringify({ connectionString: getUriForEnv(sourceEnv) }),
       });
       if (res.ok) {
-        const data: MetricsData = await res.json();
+        const data = await res.json();
         setMetrics(data);
+        setHasFetched(true);
         notify("Metrics updated from live database!");
       } else {
-        notify("Metrics polled from background monitor.");
+        notify("Failed to fetch live metrics.");
       }
     } catch {
-      notify("Metrics polled from background monitor.");
+      notify("Failed to fetch live metrics.");
     } finally {
       setMetricsLoading(false);
     }
@@ -201,16 +188,19 @@ export default function Home() {
     copyToClipboard(sql, `Drop statement for ${indexName}`);
   };
 
+  const totalDeadTuples = metrics.tableHealth.reduce((sum, t) => sum + Number(t.n_dead_tup), 0).toLocaleString();
+  const totalUnusedIndexes = metrics.unusedIndexes.length;
+  const totalActiveQueries = metrics.longRunningQueries.length;
+  const longestQueryDuration = metrics.longRunningQueries.length > 0 ? parseFloat(metrics.longRunningQueries[0].duration).toFixed(2) + "s" : "0.00s";
+
   return (
     <div className="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased">
-      {/* Toast Notification Banner */}
       {notification && (
         <div className="fixed top-4 right-4 z-50 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-xl text-xs font-medium border border-indigo-400 flex items-center space-x-2 animate-bounce">
           <span>🔔 {notification}</span>
         </div>
       )}
 
-      {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center space-x-4">
           <div className="bg-indigo-600/20 text-indigo-400 p-2 rounded-lg border border-indigo-500/30">
@@ -249,9 +239,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Navigation Sidebar */}
         <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 p-4 space-y-6">
           <div>
             <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-3">Navigation</div>
@@ -290,18 +278,15 @@ export default function Home() {
               </button>
             </nav>
           </div>
-
           <div className="p-3 border-t border-slate-800 text-xs text-slate-400 space-y-1">
             <span className="text-slate-300 font-medium block">Engine Mode:</span>
-            <p className="text-[11px] text-emerald-400 font-mono">Live API + Fallback Active</p>
+            <p className="text-[11px] text-emerald-400 font-mono">Live API Integration</p>
           </div>
         </aside>
 
-        {/* Content Panel */}
         <main className="flex-1 overflow-y-auto p-8 bg-slate-950">
           <div className="max-w-6xl mx-auto space-y-6">
 
-            {/* TAB 1: CONNECTIONS (FR2: UI Entry for Database Connection) */}
             {activeTab === "connections" && (
               <section className="space-y-6">
                 <div className="flex justify-between items-start">
@@ -309,11 +294,6 @@ export default function Home() {
                     <h2 className="text-2xl font-bold text-slate-100">Database Connection Entry & Environment Manager</h2>
                     <p className="text-slate-400 text-sm mt-1">Configure and manage connection strings across Development, Staging, and Production environments.</p>
                   </div>
-                  {annotationsOn && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
-                      <strong>Blueprint Note (FR2):</strong> Provides UI entry for database URIs and tests connection pool handshakes across 3 environments.
-                    </div>
-                  )}
                 </div>
 
                 {connStatus && (
@@ -323,9 +303,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 3-Tier Environment Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Development DB */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-slate-200 text-sm">Development DB</h3>
@@ -333,24 +311,10 @@ export default function Home() {
                     </div>
                     <div>
                       <label className="block text-[11px] text-slate-400 mb-1">Connection String (URI)</label>
-                      <input
-                        type="text"
-                        value={devUri}
-                        onChange={(e) => setDevUri(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                    <div className="flex flex-col space-y-2">
-                      <button onClick={() => handleTestConnection("Development")} className="w-full bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-medium transition">
-                        Test Dev Connection
-                      </button>
-                      <button onClick={() => handleRefreshSchema("Development")} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition">
-                        Refresh Schema
-                      </button>
+                      <input type="text" value={devUri} onChange={(e) => setDevUri(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200" />
                     </div>
                   </div>
 
-                  {/* Staging DB */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-slate-200 text-sm">Source / Staging DB</h3>
@@ -358,24 +322,10 @@ export default function Home() {
                     </div>
                     <div>
                       <label className="block text-[11px] text-slate-400 mb-1">Connection String (URI)</label>
-                      <input
-                        type="text"
-                        value={stagingUri}
-                        onChange={(e) => setStagingUri(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                    <div className="flex flex-col space-y-2">
-                      <button onClick={() => handleTestConnection("Staging")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg text-xs font-medium transition">
-                        Test Staging Connection
-                      </button>
-                      <button onClick={() => handleRefreshSchema("Staging")} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition">
-                        Refresh Schema
-                      </button>
+                      <input type="text" value={stagingUri} onChange={(e) => setStagingUri(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200" />
                     </div>
                   </div>
 
-                  {/* Production DB */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-slate-200 text-sm">Target / Production DB</h3>
@@ -383,110 +333,51 @@ export default function Home() {
                     </div>
                     <div>
                       <label className="block text-[11px] text-slate-400 mb-1">Connection String (URI)</label>
-                      <input
-                        type="text"
-                        value={prodUri}
-                        onChange={(e) => setProdUri(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                    <div className="flex flex-col space-y-2">
-                      <button onClick={() => handleTestConnection("Production")} className="w-full bg-amber-600 hover:bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-medium transition">
-                        Test Production Connection
-                      </button>
-                      <button onClick={() => handleRefreshSchema("Production")} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition">
-                        Refresh Schema
-                      </button>
+                      <input type="text" value={prodUri} onChange={(e) => setProdUri(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200" />
                     </div>
                   </div>
                 </div>
 
-                {/* FR3: Cross-Environment Schema Selection Controls */}
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h3 className="font-semibold text-slate-200 text-sm">Schema Selection & Environment Bridge Controls (FR3)</h3>
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">Dynamic Selection</span>
+                    <h3 className="font-semibold text-slate-200 text-sm">Schema Selection & Environment Bridge Controls</h3>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Source Selector */}
                     <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                       <label className="text-xs font-semibold text-indigo-400 block">Source Environment (Baseline)</label>
-                      <select
-                        value={sourceEnv}
-                        onChange={(e: any) => setSourceEnv(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                      >
-                        <option value="dev">Development Database (Port 5432 / postgres)</option>
-                        <option value="staging">Staging Database (Port 5432 / staging_schema)</option>
-                        <option value="prod">Production Database (Port 5433 / prod_schema)</option>
+                      <select value={sourceEnv} onChange={(e: any) => setSourceEnv(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200">
+                        <option value="dev">Development Database</option>
+                        <option value="staging">Staging Database</option>
+                        <option value="prod">Production Database</option>
                       </select>
                       <div>
                         <label className="text-[11px] text-slate-400 block mb-1">Source Schema Name</label>
-                        <input
-                          type="text"
-                          value={sourceSchema}
-                          onChange={(e) => setSourceSchema(e.target.value)}
-                          placeholder="e.g. public, staging_schema"
-                          className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono"
-                        />
+                        <input type="text" value={sourceSchema} onChange={(e) => setSourceSchema(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200" />
                       </div>
                     </div>
 
-                    {/* Target Selector */}
                     <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                       <label className="text-xs font-semibold text-amber-400 block">Target Environment (Compare Target)</label>
-                      <select
-                        value={targetEnv}
-                        onChange={(e: any) => setTargetEnv(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                      >
-                        <option value="prod">Production Database (Port 5433 / prod_schema)</option>
-                        <option value="staging">Staging Database (Port 5432 / staging_schema)</option>
-                        <option value="dev">Development Database (Port 5432 / postgres)</option>
+                      <select value={targetEnv} onChange={(e: any) => setTargetEnv(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200">
+                        <option value="prod">Production Database</option>
+                        <option value="staging">Staging Database</option>
+                        <option value="dev">Development Database</option>
                       </select>
                       <div>
                         <label className="text-[11px] text-slate-400 block mb-1">Target Schema Name</label>
-                        <input
-                          type="text"
-                          value={targetSchema}
-                          onChange={(e) => setTargetSchema(e.target.value)}
-                          placeholder="e.g. public, prod_schema"
-                          className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono"
-                        />
+                        <input type="text" value={targetSchema} onChange={(e) => setTargetSchema(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200" />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2">
-                    <button
-                      onClick={() => {
-                        setActiveTab("compare");
-                        notify(`Set active comparison bridge: ${sourceEnv.toUpperCase()} (${sourceSchema}) ➔ ${targetEnv.toUpperCase()} (${targetSchema})`);
-                      }}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium text-xs transition"
-                    >
-                      Apply Selection to Comparison Engine ➔
-                    </button>
-                    <span className="text-xs text-slate-400 font-mono">
-                      Active Bridge: <span className="text-indigo-400 font-bold">{sourceEnv.toUpperCase()}</span> ({sourceSchema}) ➔ <span className="text-amber-400 font-bold">{targetEnv.toUpperCase()}</span> ({targetSchema})
-                    </span>
                   </div>
                 </div>
               </section>
             )}
 
-            {/* TAB 2: SCHEMA COMPARISON */}
             {activeTab === "compare" && (
-              <SchemaComparisonPanel
-                sourceUri={getUriForEnv(sourceEnv)}
-                targetUri={getUriForEnv(targetEnv)}
-                sourceSchema={sourceSchema}
-                targetSchema={targetSchema}
-              />
+              <SchemaComparisonPanel sourceUri={getUriForEnv(sourceEnv)} targetUri={getUriForEnv(targetEnv)} sourceSchema={sourceSchema} targetSchema={targetSchema} />
             )}
 
-            {/* TAB 3: QUERY STUDIO */}
             {activeTab === "query" && (
               <section className="space-y-6">
                 <div className="flex justify-between items-start">
@@ -494,174 +385,175 @@ export default function Home() {
                     <h2 className="text-2xl font-bold text-slate-100">Query Execution Studio & Anti-Pattern Detector</h2>
                     <p className="text-slate-400 text-sm mt-1">Analyze SQL execution plans (`EXPLAIN FORMAT JSON`) and flag performance issues.</p>
                   </div>
-                  {annotationsOn && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
-                      <strong>Blueprint Note (Module 3):</strong> Uses `lib/query-analyzer.ts` and `app/api/query/analyze/route.ts`.
-                    </div>
-                  )}
                 </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <label className="text-xs font-semibold text-slate-300">SQL Input Editor</label>
-                      <div className="space-x-2">
-                        <button onClick={() => handleLoadSampleQuery("wildcard")} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">
-                          Sample: Wildcard
-                        </button>
-                        <button onClick={() => handleLoadSampleQuery("missingWhere")} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">
-                          Sample: Unbounded UPDATE
-                        </button>
-                        <button onClick={() => handleLoadSampleQuery("clean")} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">
-                          Sample: Optimized
-                        </button>
-                      </div>
-                    </div>
-
-                    <textarea
-                      rows={5}
-                      value={queryInput}
-                      onChange={(e) => setQueryInput(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200"
-                    />
-
-                    <div className="flex justify-between items-center">
-                      <button onClick={handleAnalyzeQuery} disabled={analyzing} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-xs font-medium transition">
-                        {analyzing ? "Analyzing Plan..." : "Analyze Execution Plan"}
-                      </button>
-                      <button onClick={() => copyToClipboard(queryInput, "Query Input")} className="text-xs text-slate-400 hover:text-slate-200">
-                        Copy SQL Query
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                    <h3 className="font-semibold text-slate-200 text-sm">Anti-Pattern Diagnostics</h3>
-                    {queryResult.antiPatterns?.length > 0 ? (
-                      queryResult.antiPatterns.map((ap, i) => (
-                        <div key={i} className="bg-amber-950/40 border border-amber-800/60 p-3 rounded-lg text-xs space-y-1">
-                          <span className="text-amber-400 font-semibold">{ap.title || ap.rule}</span>
-                          <p className="text-amber-200/80 text-[11px]">{ap.desc || ap.message}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="bg-emerald-950/40 border border-emerald-800/60 p-3 rounded-lg text-xs text-emerald-300">
-                        ✅ No obvious anti-patterns detected in this query!
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-slate-200 text-sm">PostgreSQL EXPLAIN Execution Plan Node</h3>
-                    <button onClick={() => copyToClipboard(JSON.stringify(queryResult.explainPlan, null, 2), "EXPLAIN JSON")} className="text-[10px] text-indigo-400 hover:underline">
-                      Copy JSON
-                    </button>
-                  </div>
-                  <pre className="bg-slate-950 p-4 rounded-lg text-xs font-mono text-sky-400 overflow-x-auto border border-slate-800">
-                    {JSON.stringify(queryResult.explainPlan, null, 2)}
-                  </pre>
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <label className="text-xs font-semibold text-slate-300">SQL Input Editor</label>
+                    <textarea rows={5} value={queryInput} onChange={(e) => setQueryInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200" />
+                    <button onClick={handleAnalyzeQuery} disabled={analyzing} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-xs font-medium">{analyzing ? "Analyzing..." : "Analyze Execution Plan"}</button>
                 </div>
               </section>
             )}
 
-            {/* TAB 4: METRICS */}
             {activeTab === "metrics" && (
               <section className="space-y-6">
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-2xl font-bold text-slate-100">Database Health & Performance Monitoring</h2>
-                    <p className="text-slate-400 text-sm mt-1">Real-time system catalog diagnostics (`pg_stat_user_tables`).</p>
+                    <p className="text-slate-400 text-sm mt-1">Real-time system catalog diagnostics fetched live from PostgreSQL.</p>
                   </div>
-                  {annotationsOn && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 max-w-sm text-xs text-amber-200">
-                      <strong>Blueprint Note (Module 4):</strong> Queries catalog views in `app/api/metrics/route.ts`.
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex justify-end">
-                  <button onClick={handleFetchMetrics} disabled={metricsLoading} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition">
-                    {metricsLoading ? "Polling..." : "Fetch Health Metrics"}
+                  <button onClick={handleFetchMetrics} disabled={metricsLoading} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition shadow-lg shadow-indigo-500/20">
+                    {metricsLoading ? "Polling live data..." : "Fetch Live Health Metrics"}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
-                    <span className="text-xs text-slate-400 block">Dead Tuples</span>
-                    <span className="text-2xl font-bold text-slate-100 font-mono">{metrics.deadTuples}</span>
-                    <span className="text-[10px] text-amber-400 block">VACUUM Recommended</span>
+                {!hasFetched && !metricsLoading && (
+                  <div className="text-center p-12 bg-slate-900 border border-slate-800 rounded-xl">
+                    <p className="text-slate-400 text-sm">Click "Fetch Live Health Metrics" to pull real data from your connected database.</p>
                   </div>
-                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
-                    <span className="text-xs text-slate-400 block">Unused Indexes</span>
-                    <span className="text-2xl font-bold text-slate-100 font-mono">{metrics.unusedIndexes}</span>
-                    <span className="text-[10px] text-slate-400 block">Reclaim Storage</span>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
-                    <span className="text-xs text-slate-400 block">Active Queries</span>
-                    <span className="text-2xl font-bold text-slate-100 font-mono">{metrics.activeQueries}</span>
-                    <span className="text-[10px] text-emerald-400 block">Normal Throughput</span>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
-                    <span className="text-xs text-slate-400 block">Longest Query</span>
-                    <span className="text-2xl font-bold text-slate-100 font-mono">{metrics.longestQuery}</span>
-                    <span className="text-[10px] text-slate-400 block">Threshold: 2.00s</span>
-                  </div>
-                </div>
+                )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                    <h3 className="font-semibold text-slate-200 text-sm">Table Health & Tuple Bloat Statistics</h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="text-slate-400 border-b border-slate-800">
-                          <tr>
-                            <th className="pb-2">Table Name</th>
-                            <th className="pb-2">Live Tuples</th>
-                            <th className="pb-2">Dead Tuples</th>
-                            <th className="pb-2">Health</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/50 text-slate-300 font-mono">
-                          {metrics.tables?.map((t, i) => (
-                            <tr key={i}>
-                              <td className="py-2.5">{t.name}</td>
-                              <td>{t.live}</td>
-                              <td className="text-amber-400">{t.dead}</td>
-                              <td><span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded">{t.health}</span></td>
+                {hasFetched && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+                        <span className="text-xs text-slate-400 block">Total Dead Tuples</span>
+                        <span className="text-2xl font-bold text-slate-100 font-mono">{totalDeadTuples}</span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+                        <span className="text-xs text-slate-400 block">Unused Indexes</span>
+                        <span className="text-2xl font-bold text-slate-100 font-mono">{totalUnusedIndexes}</span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+                        <span className="text-xs text-slate-400 block">Active Queries</span>
+                        <span className="text-2xl font-bold text-slate-100 font-mono">{totalActiveQueries}</span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1">
+                        <span className="text-xs text-slate-400 block">Longest Query</span>
+                        <span className="text-2xl font-bold text-slate-100 font-mono">{longestQueryDuration}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                        <h3 className="font-semibold text-slate-200 text-sm">Table Health & Tuple Bloat Statistics</h3>
+                        <div className="overflow-x-auto max-h-64">
+                          <table className="w-full text-left text-xs">
+                            <thead className="text-slate-400 border-b border-slate-800 sticky top-0 bg-slate-900">
+                              <tr>
+                                <th className="pb-2">Table Name</th>
+                                <th className="pb-2">Live Tuples</th>
+                                <th className="pb-2">Dead Tuples</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/50 text-slate-300 font-mono">
+                              {metrics.tableHealth.map((t, i) => (
+                                <tr key={i}>
+                                  <td className="py-2.5">{t.table_name}</td>
+                                  <td>{t.n_live_tup}</td>
+                                  <td className={t.n_dead_tup > 1000 ? "text-red-400" : "text-amber-400"}>{t.n_dead_tup}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                        <h3 className="font-semibold text-slate-200 text-sm">Unused Index Candidates</h3>
+                        <div className="space-y-3 text-xs max-h-64 overflow-y-auto pr-2">
+                          {metrics.unusedIndexes.length === 0 ? (
+                            <p className="text-slate-500">No unused indexes found.</p>
+                          ) : (
+                            metrics.unusedIndexes.map((idx, i) => (
+                              <div key={i} className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
+                                <div>
+                                  <p className="font-mono text-indigo-400 font-semibold">{idx.index_name}</p>
+                                  <p className="text-[11px] text-slate-400">Table: {idx.table_name} | Scans: 0</p>
+                                </div>
+                                <button onClick={() => handleDropIndexSQL(idx.index_name)} className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                                  Drop SQL
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 mt-6">
+                      <h3 className="font-semibold text-slate-200 text-sm">Sequential Scan Warnings (Index Recommended)</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="text-slate-400 border-b border-slate-800">
+                            <tr>
+                              <th className="pb-2">Table Name</th>
+                              <th className="pb-2">Sequential Scans</th>
+                              <th className="pb-2">Tuples Read</th>
+                              <th className="pb-2">Est. Rows</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                    <h3 className="font-semibold text-slate-200 text-sm">Unused Index Candidates</h3>
-                    <div className="space-y-3 text-xs">
-                      <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
-                        <div>
-                          <p className="font-mono text-indigo-400 font-semibold">idx_students_phone</p>
-                          <p className="text-[11px] text-slate-400">Table: students | Scans: 0</p>
-                        </div>
-                        <button onClick={() => handleDropIndexSQL("idx_students_phone")} className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
-                          Copy Drop SQL
-                        </button>
-                      </div>
-
-                      <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
-                        <div>
-                          <p className="font-mono text-indigo-400 font-semibold">idx_courses_deprecated_code</p>
-                          <p className="text-[11px] text-slate-400">Table: courses | Scans: 0</p>
-                        </div>
-                        <button onClick={() => handleDropIndexSQL("idx_courses_deprecated_code")} className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
-                          Copy Drop SQL
-                        </button>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50 text-slate-300 font-mono">
+                            {metrics.sequentialScans.length === 0 ? (
+                              <tr><td colSpan={4} className="py-4 text-center text-slate-500">No excessive sequential scans detected.</td></tr>
+                            ) : (
+                              metrics.sequentialScans.map((scan, i) => (
+                                <tr key={i}>
+                                  <td className="py-2.5">{scan.table_name}</td>
+                                  <td className="text-amber-400">{scan.seq_scan}</td>
+                                  <td>{scan.seq_tup_read}</td>
+                                  <td>{scan.n_live_tup}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                  </div>
-                </div>
+
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 mt-6">
+                      <h3 className="font-semibold text-slate-200 text-sm">Historical Query Monitoring (pg_stat_statements)</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="text-slate-400 border-b border-slate-800">
+                            <tr>
+                              <th className="pb-2 w-1/3">Query Snippet</th>
+                              <th className="pb-2">Executions</th>
+                              <th className="pb-2">Avg Time (ms)</th>
+                              <th className="pb-2">Score</th>
+                              <th className="pb-2">Total Rows</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50 text-slate-300 font-mono">
+                            {metrics.historicalQueries?.length === 0 ? (
+                              <tr><td colSpan={5} className="py-4 text-center text-slate-500">Ensure pg_stat_statements is enabled to view history.</td></tr>
+                            ) : (
+                              metrics.historicalQueries?.map((hq, i) => {
+                                const timeMs = parseFloat(hq.average_time_ms);
+                                let score = <span className="text-red-400 font-bold">D (Poor)</span>;
+                                if (timeMs < 10) score = <span className="text-emerald-400 font-bold">A (Excellent)</span>;
+                                else if (timeMs < 100) score = <span className="text-blue-400 font-bold">B (Good)</span>;
+                                else if (timeMs < 500) score = <span className="text-amber-400 font-bold">C (Fair)</span>;
+
+                                return (
+                                  <tr key={i}>
+                                    <td className="py-2.5 truncate max-w-xs text-sky-400/80">{hq.query.substring(0, 70)}...</td>
+                                    <td>{hq.execution_count}</td>
+                                    <td className="text-slate-300">{timeMs.toFixed(2)}</td>
+                                    <td>{score}</td>
+                                    <td>{hq.total_rows_returned}</td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
               </section>
             )}
 
