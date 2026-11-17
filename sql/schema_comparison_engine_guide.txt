@@ -1,0 +1,15 @@
+=== Schema Comparison Engine Quick Verification Guide ===
+
+1. Seed sample tables into Development (5432) and Staging (5433):
+   Get-Content "sql/demo_students.sql" | docker exec -i postgres-dev psql -U root -d dev_schema
+   Get-Content "sql/demo_students.sql" | docker exec -i postgres-staging psql -U root -d staging_schema
+
+2. Trigger Two-Way Schema Comparison via API:
+   $body = @{
+     sourceUri = "postgresql://root:password@127.0.0.1:5432/dev_schema"
+     targetUri = "postgresql://root:password@127.0.0.1:5433/staging_schema"
+     sourceSchema = "public"
+     targetSchema = "public"
+   } | ConvertTo-Json
+
+   Invoke-RestMethod -Uri "http://localhost:3000/api/schemas/compare" -Method Post -ContentType "application/json" -Body $body | ConvertTo-Json -Depth 10

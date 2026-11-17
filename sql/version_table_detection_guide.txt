@@ -1,0 +1,8 @@
+=== Schema Version Detection Quick Verification Guide ===
+
+1. Initialize schema_version tables:
+   Get-Content "sql/schema_version.sql" | docker exec -i postgres-dev psql -U root -d dev_schema
+   Get-Content "sql/schema_version.sql" | docker exec -i postgres-staging psql -U root -d staging_schema
+
+2. Test Version Detection API:
+   Invoke-RestMethod -Uri "http://localhost:3000/api/schemas/version" -Method Post -ContentType "application/json" -Body "{}" | ConvertTo-Json -Depth 10
