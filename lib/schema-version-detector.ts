@@ -1,71 +1,76 @@
 import { getPool } from "./database";
 
-// Defines the information returned when checking a database's schema version.
-export interface SchemaVersionResult
-{
-    environment: string;
-    hasVersionTable: boolean;
-    version: string | null;
+export interface SchemaVersionResult {
+  environment: string;
+  schemaName: string;
+  hasVersionTable: boolean;
+  version: string | null;
 }
 
-// Detects the schema version stored in a database.
+function validateIdentifier(name: string): string {
+  const trimmed = (name || "public").trim();
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+    throw new Error(`Invalid schema identifier: "${name}"`);
+  }
+  return trimmed;
+}
+
+/**
+ * Checks whether <schemaName>.schema_version exists and retrieves the latest SemVer string (SRS FR5).
+ */
 export async function detectSchemaVersion(
-    connectionString: string,
-    environment: string
-): Promise<SchemaVersionResult>
-{
-    // Create or retrieve the database connection pool.
-    const pool = getPool(connectionString);
+  connectionString: string,
+  environment: string,
+  schemaName: string = "public"
+): Promise<SchemaVersionResult> {
+  const pool = getPool(connectionString);
+  const safeSchema = validateIdentifier(schemaName);
 
-    // Check whether the schema_version table exists.
-    const tableResult = await pool.query(
-        `
-        SELECT EXISTS
-        (
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = 'public'
-            AND table_name = 'schema_version'
-        ) AS table_exists;
-        `
-    );
+  const tableResult = await pool.query(
+    `
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = $1
+        AND table_name = 'schema_version'
+    ) AS table_exists;
+    `,
+    [safeSchema]
+  );
 
-    const hasVersionTable = tableResult.rows[0].table_exists;
+  const hasVersionTable = Boolean(tableResult.rows[0]?.table_exists);
 
-    // Return if the version table does not exist.
-    if (!hasVersionTable)
-    {
-        return {
-            environment,
-            hasVersionTable: false,
-            version: null
-        };
-    }
-
-    // Retrieve the latest version number from the version table.
-    const versionResult = await pool.query(
-        `
-        SELECT version
-        FROM public.schema_version
-        ORDER BY id DESC
-        LIMIT 1;
-        `
-    );
-
-    // Return if the table exists but contains no records.
-    if (versionResult.rows.length === 0)
-    {
-        return {
-            environment,
-            hasVersionTable: true,
-            version: null
-        };
-    }
-
-    // Return the detected version together with the environment name.
+  if (!hasVersionTable) {
     return {
-        environment,
-        hasVersionTable: true,
-        version: versionResult.rows[0].version
+      environment,
+      schemaName: safeSchema,
+      hasVersionTable: false,
+      version: null,
     };
+  }
+
+  const versionResult = await pool.query(
+    `
+    SELECT version
+    FROM "${safeSchema}"."schema_version"
+    ORDER BY id DESC
+    LIMIT 1;
+    `
+  );
+
+  if (versionResult.rows.length === 0) {
+    return {
+      environment,
+      schemaName: safeSchema,
+      hasVersionTable: true,
+      version: null,
+    };
+  }
+
+  return {
+    environment,
+    schemaName: safeSchema,
+    hasVersionTable: true,
+    version: versionResult.rows[0].version,
+  };
 }

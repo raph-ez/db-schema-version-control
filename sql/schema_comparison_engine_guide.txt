@@ -1,37 +1,15 @@
-!!! Use all these commands in the terminal !!!
-(These tables are stored locally on your device)
+=== Schema Comparison Engine Quick Verification Guide ===
 
-/* Use these commands to create the tables*/
+1. Seed sample tables into Development (5432) and Staging (5433):
+   Get-Content "sql/demo_students.sql" | docker exec -i postgres-dev psql -U root -d dev_schema
+   Get-Content "sql/demo_students.sql" | docker exec -i postgres-staging psql -U root -d staging_schema
 
-Get-Content "sql/demo_students.sql" |
-    docker exec -i postgres-dev psql -U root -d dev_schema
+2. Trigger Two-Way Schema Comparison via API:
+   $body = @{
+     sourceUri = "postgresql://root:password@127.0.0.1:5432/dev_schema"
+     targetUri = "postgresql://root:password@127.0.0.1:5433/staging_schema"
+     sourceSchema = "public"
+     targetSchema = "public"
+   } | ConvertTo-Json
 
-Get-Content "sql/demo_students.sql" |
-    docker exec -i postgres-staging psql -U root -d staging_schema
-
-
-==========================================================
-
-
-/* Use the command below to compare the tables*/
-$body = @{
-    development = "development"
-    staging = "staging"
-} | ConvertTo-Json
-
-$response = Invoke-RestMethod `
-    -Uri "http://localhost:3000/api/schemas/compare" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-
-$response | ConvertTo-Json -Depth 20
-
-
-==========================================================
-
-
-/* Use these commands to delete the created tables */
-docker exec -it postgres-dev psql -U root -d dev_schema -c "DROP TABLE IF EXISTS public.demo_students;"
-
-docker exec -it postgres-staging psql -U root -d staging_schema -c "DROP TABLE IF EXISTS public.demo_students;"
+   Invoke-RestMethod -Uri "http://localhost:3000/api/schemas/compare" -Method Post -ContentType "application/json" -Body $body | ConvertTo-Json -Depth 10
